@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invoice Generator</title>
+<style>
+  :root{--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--accent:#2563eb;--bg:#f3f4f6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:900px;margin:24px auto;padding:0 16px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.ghost{background:transparent}
+  .sheet{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);padding:32px}
+  h1{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}
+  .muted{color:var(--muted)}
+  .head{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:24px}
+  .meta{display:grid;grid-template-columns:auto auto;gap:4px 12px;font-size:13px}
+  .meta input{width:130px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+  textarea,input{font:inherit;width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;color:inherit}
+  textarea{resize:vertical;min-height:90px}
+  input:focus,textarea:focus{outline:2px solid #bfdbfe;border-color:var(--accent)}
+  table{width:100%;border-collapse:collapse;margin-bottom:16px}
+  th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);padding:8px 6px}
+  td{border-bottom:1px solid var(--line);padding:6px;vertical-align:top}
+  td.num,th.num{text-align:right}
+  .item-desc{min-width:180px}
+  .del{color:#b91c1c;background:none;border:none;cursor:pointer;padding:4px 6px;font-size:16px;line-height:1}
+  .foot{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;align-items:flex-start}
+  .totals{margin-left:auto;min-width:260px}
+  .row{display:flex;justify-content:space-between;padding:6px 0;font-size:14px}
+  .row.grand{border-top:2px solid var(--ink);margin-top:6px;padding-top:10px;font-weight:700;font-size:18px}
+  .row input{width:80px;text-align:right}
+  .notes{flex:1;min-width:240px}
+  @media(max-width:640px){.cols{grid-template-columns:1fr}.sheet{padding:20px}}
+  @media print{
+    body{background:#fff}
+    .wrap{margin:0;padding:0;max-width:none}
+    .toolbar,.del{display:none!important}
+    .sheet{box-shadow:none;border-radius:0;padding:0}
+    input,textarea{border:none!important;padding:0!important;background:none!important;resize:none;outline:none!important}
+    td input{padding:2px 0!important}
+    @page{margin:16mm}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="toolbar">
+    <button class="primary" onclick="window.print()">Print / Save PDF</button>
+    <button onclick="addItem()">+ Item</button>
+    <button class="ghost" onclick="save()">Simpan draft</button>
+    <button class="ghost" onclick="load()">Muat draft</button>
+    <button class="ghost" onclick="reset()">Kosongkan</button>
+  </div>
+
+  <div class="sheet" id="sheet">
+    <div class="head">
+      <div>
+        <h1>INVOICE</h1>
+        <div class="muted" id="noLabel">#INV-001</div>
+      </div>
+      <div class="meta">
+        <span class="muted">Nomor</span><input id="no" value="INV-001">
+        <span class="muted">Tanggal</span><input id="date" type="date">
+        <span class="muted">Jatuh tempo</span><input id="due" type="date">
+        <span class="muted">Mata uang</span><input id="cur" value="Rp" style="width:70px">
+      </div>
+    </div>
+
+    <div class="cols">
+      <div>
+        <label for="from">Dari</label>
+        <textarea id="from" placeholder="Nama usaha&#10;Alamat&#10;email@domain.com"></textarea>
+      </div>
+      <div>
+        <label for="to">Ditagihkan ke</label>
+        <textarea id="to" placeholder="Nama klien&#10;Alamat&#10;email@domain.com"></textarea>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Deskripsi</th><th class="num" style="width:70px">Qty</th><th class="num" style="width:120px">Harga</th><th class="num" style="width:120px">Jumlah</th><th style="width:32px"></th></tr>
+      </thead>
+      <tbody id="items"></tbody>
+    </table>
+
+    <div class="foot">
+      <div class="notes">
+        <label for="notes">Catatan</label>
+        <textarea id="notes" placeholder="Instruksi pembayaran, rekening, syarat." style="min-height:70px"></textarea>
+      </div>
+      <div class="totals">
+        <div class="row"><span>Subtotal</span><span id="sub">0</span></div>
+        <div class="row"><span>Pajak (%)</span><input id="taxRate" type="number" value="0" min="0" step="0.1"></div>
+        <div class="row"><span>Pajak</span><span id="tax">0</span></div>
+        <div class="row"><span>Diskon</span><input id="disc" type="number" value="0" min="0" step="0.01"></div>
+        <div class="row grand"><span>Total</span><span id="total">0</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const itemsEl = $('items');
+const KEY = 'invoice-generator-draft';
+
+const fmt = n => n.toLocaleString('id-ID', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+function row(d = '', q = 1, p = 0) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input class="item-desc" value="${esc(d)}" placeholder="Deskripsi item"></td>
+    <td><input class="qty num" type="number" min="0" step="0.01" value="${q}" style="text-align:right"></td>
+    <td><input class="price num" type="number" min="0" step="0.01" value="${p}" style="text-align:right"></td>
+    <td class="num amount">0</td>
+    <td><button class="del" title="Hapus" onclick="this.closest('tr').remove();calc()">×</button></td>`;
+  itemsEl.appendChild(tr);
+  return tr;
+}
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function addItem() { row().querySelector('.item-desc').focus(); calc(); }
+
+function calc() {
+  let sub = 0;
+  for (const tr of itemsEl.rows) {
+    const q = +tr.querySelector('.qty').value || 0;
+    const p = +tr.querySelector('.price').value || 0;
+    const a = q * p;
+    sub += a;
+    tr.querySelector('.amount').textContent = fmt(a);
+  }
+  const rate = +$('taxRate').value || 0;
+  const tax = sub * rate / 100;
+  const disc = +$('disc').value || 0;
+  $('sub').textContent = fmt(sub);
+  $('tax').textContent = fmt(tax);
+  $('total').textContent = $('cur').value + ' ' + fmt(Math.max(0, sub + tax - disc));
+  $('noLabel').textContent = '#' + $('no').value;
+}
+
+function save() {
+  const data = {
+    no: $('no').value, date: $('date').value, due: $('due').value, cur: $('cur').value,
+    from: $('from').value, to: $('to').value, notes: $('notes').value,
+    taxRate: $('taxRate').value, disc: $('disc').value,
+    items: [...itemsEl.rows].map(tr => ({
+      d: tr.querySelector('.item-desc').value,
+      q: tr.querySelector('.qty').value,
+      p: tr.querySelector('.price').value
+    }))
+  };
+  localStorage.setItem(KEY, JSON.stringify(data));
+}
+
+function load() {
+  const raw = localStorage.getItem(KEY);
+  if (!raw) return alert('Belum ada draft tersimpan.');
+  const d = JSON.parse(raw);
+  for (const k of ['no','date','due','cur','from','to','notes','taxRate','disc']) $(k).value = d[k] ?? '';
+  itemsEl.innerHTML = '';
+  (d.items || []).forEach(i => row(i.d, i.q, i.p));
+  if (!itemsEl.rows.length) row();
+  calc();
+}
+
+function reset() {
+  if (!confirm('Kosongkan form? Draft tersimpan tidak dihapus.')) return;
+  ['from','to','notes'].forEach(k => $(k).value = '');
+  $('taxRate').value = 0; $('disc').value = 0;
+  itemsEl.innerHTML = ''; row(); calc();
+}
+
+document.addEventListener('input', e => { if (e.target.closest('#sheet')) calc(); });
+document.addEventListener('DOMContentLoaded', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  $('date').value = today;
+  const d = new Date(Date.now() + 14 * 864e5);
+  $('due').value = d.toISOString().slice(0, 10);
+  row('Jasa / produk', 1, 0);
+  calc();
+});
+</script>
+</body>
+</html>
